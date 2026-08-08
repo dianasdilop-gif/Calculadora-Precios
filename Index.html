@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calculadora de Precios</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f4f6f9; color: #1a2233; padding: 16px; font-size: 14px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 19px; margin-bottom: 2px; }
+  .sub { color: #6b7482; font-size: 12px; margin-bottom: 14px; }
+  .card {
+    background: #fff; border: 1px solid #e2e6ee; border-radius: 12px;
+    padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 2px rgba(20,30,60,.04);
+  }
+  label { display: block; font-size: 12px; font-weight: 600; color: #4a5468; margin: 10px 0 4px; }
+  select, input[type=text] {
+    width: 100%; padding: 9px 10px; border: 1px solid #cfd6e2; border-radius: 8px;
+    font-size: 14px; background: #fff; color: #1a2233;
+  }
+  .methods { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 6px; }
+  .mbtn {
+    padding: 8px 12px; border: 1px solid #cfd6e2; border-radius: 20px; background: #fff;
+    font-size: 13px; cursor: pointer; color: #35405a; font-weight: 500;
+  }
+  .mbtn.active { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+  .result { margin-top: 14px; }
+  .bigprice { font-size: 30px; font-weight: 700; color: #0f172a; }
+  .pricelabel { font-size: 12px; color: #6b7482; text-transform: uppercase; letter-spacing: .04em; }
+  .row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px dashed #e6eaf1; font-size: 14px; }
+  .row:last-child { border-bottom: none; }
+  .row .v { font-weight: 600; }
+  .highlight { background: #eef4ff; border: 1px solid #c7d9fb; border-radius: 10px; padding: 12px; margin-top: 10px; }
+  .highlight .bigprice { font-size: 24px; color: #1d4ed8; }
+  .note { font-size: 12px; color: #8a93a3; margin-top: 8px; line-height: 1.4; }
+  .err { background: #fdf1f1; border: 1px solid #f2c7c7; color: #9b3535; padding: 12px; border-radius: 10px; font-size: 13px; line-height: 1.5; }
+  .muted { color: #8a93a3; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tab { flex: 1; text-align: center; padding: 10px; border-radius: 10px; border: 1px solid #cfd6e2; background: #fff; cursor: pointer; font-weight: 600; font-size: 13px; color: #4a5468; }
+  .tab.active { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+  .hidden { display: none; }
+  #loading { text-align: center; padding: 40px 0; color: #6b7482; }
+  .green { color: #1c7c43; }
+  .refresh { float: right; font-size: 12px; color: #1d4ed8; cursor: pointer; background: none; border: none; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <button class="refresh" onclick="load()">↻ Actualizar</button>
+  <h1>Calculadora de precios 📱</h1>
+  <div class="sub">Inventario en vivo de <b>Precios Kredimobile</b>.</div>
+
+  <div id="loading">Cargando inventario…</div>
+  <div id="error" class="err hidden"></div>
+
+  <div id="app" class="hidden">
+    <div class="tabs">
+      <button class="tab active" id="tabFin" onclick="switchTab('fin')">Financieras y pagos</button>
+      <button class="tab" id="tabKre" onclick="switchTab('kre')">Krediya / PayJoy</button>
+    </div>
+
+    <!-- ============ FINANCIERAS ============ -->
+    <div id="panelFin">
+      <div class="card">
+        <label>Buscar celular</label>
+        <input type="text" id="search" placeholder="Ej: redmi 15, galaxy a17…" oninput="renderPhoneOptions()">
+        <label>Celular (solo disponibles)</label>
+        <select id="phoneSel" onchange="calc()"></select>
+
+        <label>Medio de pago / financiera</label>
+        <div class="methods" id="methods"></div>
+      </div>
+
+      <div class="card result" id="resultCard"></div>
+    </div>
+
+    <!-- ============ KREDIYA ============ -->
+    <div id="panelKre" class="hidden">
+      <div class="card">
+        <div class="note" style="margin-top:0">Precios de la pestaña <b>PRECIOS KREDIYA</b>. Los celulares que se agreguen allá aparecen aquí al actualizar.</div>
+        <label>Celular</label>
+        <select id="kreSel" onchange="calcKre()"></select>
+        <label>% de inicial (según plataforma)</label>
+        <select id="krePct" onchange="calcKre()">
+          <option value="0">0%</option><option value="5">5%</option><option value="10">10%</option>
+          <option value="15">15%</option><option value="20">20%</option><option value="25" selected>25%</option>
+          <option value="30">30%</option><option value="35">35%</option><option value="40">40%</option>
+          <option value="45">45%</option><option value="50">50%</option>
+        </select>
+      </div>
+      <div class="card result" id="kreResult"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================= CONFIGURACIÓN =================
+// ID del Google Sheet (de la URL del archivo). Si algún día cambias de archivo, solo cambia esta línea:
+const SHEET_ID = "1Yo_SKRKOMAl3o77Xo17OaMd4oOtaCmXi";
+const TAB_PRECIOS = "PRECIOS";
+// Se prueban en orden hasta encontrar la pestaña (el nombre real tiene un espacio al final)
+const TABS_KREDIYA = ["PRECIOS KREDIYA ", "PRECIOS KREDIYA", "KREDIYA"];
+// =================================================
+
+const fmt = n => "$ " + Math.floor(n).toLocaleString("es-CO");
+
+const METHODS = [
+  { id:"efectivo", name:"Contado / Efectivo", base:"contado", rate:0, iva:false },
+  { id:"redeban",  name:"Datáfono Redeban",   base:"contado", rate:0.035, iva:false },
+  { id:"wompi",    name:"Link Wompi",          base:"contado", rate:0.04, iva:false },
+  { id:"addi",     name:"Addi",                base:"fin", rate:0.035, iva:true },
+  { id:"sumas",    name:"Sumas Pay (Mundo Sumas)", base:"fin", rate:0.019, iva:false },
+  { id:"bogota",   name:"Banco de Bogotá",     base:"fin", rate:0, iva:false },
+  { id:"alcanos",  name:"Alcanos / Brilla",    base:"fin", rate:0.05, iva:false },
+];
+
+// contado:    <450.000 → +150.000 | ≤950.000 → +180.000 | resto +200.000
+// financiera: <450.000 → +230.000 | ≤780.000 → +270.000 | resto +300.000
+const precioContado = c => c + (c < 450000 ? 150000 : (c <= 950000 ? 180000 : 200000));
+const precioFin     = c => c + (c < 450000 ? 230000 : (c <= 780000 ? 270000 : 300000));
+
+function cobro(p, m) {
+  const eff = m.iva ? m.rate * 1.19 : m.rate;
+  const fee  = Math.floor(p * eff);
+  const fee2 = Math.floor(fee * eff);
+  return { fee, fee2, totalIncluido: p + fee + fee2 };
+}
+
+function money(s) {
+  if (typeof s === "number") return Math.floor(s);
+  if (!s) return NaN;
+  const neg = String(s).indexOf("-") >= 0;
+  const d = String(s).replace(/[^0-9]/g, "");
+  if (!d) return NaN;
+  return (neg ? -1 : 1) * parseInt(d, 10);
+}
+
+let inventory = [], krediya = [], selMethod = "efectivo";
+
+// Carga vía JSONP (funciona incluso abriendo el archivo con doble clic, sin bloqueos CORS)
+let jsonpCount = 0;
+function fetchTab(tab) {
+  return new Promise(function (resolve, reject) {
+    const cbName = "gvizCb" + (jsonpCount++);
+    const script = document.createElement("script");
+    let done = false;
+    const timer = setTimeout(function () {
+      if (done) return; done = true;
+      cleanup(); reject(new Error("tiempo de espera agotado en pestaña " + tab));
+    }, 15000);
+    function cleanup() {
+      clearTimeout(timer);
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+    window[cbName] = function (resp) {
+      if (done) return; done = true;
+      cleanup();
+      if (!resp || resp.status === "error" || !resp.table) {
+        reject(new Error("Google no entregó datos de la pestaña " + tab));
+        return;
+      }
+      // Convierte filas gviz a arreglos simples de valores
+      const rows = (resp.table.rows || []).map(function (r) {
+        return (r.c || []).map(function (c) {
+          if (!c) return "";
+          if (c.v !== null && c.v !== undefined) return c.v;
+          return c.f || "";
+        });
+      });
+      resolve(rows);
+    };
+    script.src = "https://docs.google.com/spreadsheets/d/" + SHEET_ID +
+      "/gviz/tq?tqx=out:json;responseHandler:" + cbName +
+      "&headers=1&sheet=" + encodeURIComponent(tab);
+    script.onerror = function () {
+      if (done) return; done = true;
+      cleanup(); reject(new Error("no se pudo conectar con Google (pestaña " + tab + ")"));
+    };
+    document.body.appendChild(script);
+  });
+}
+
+async function load() {
+  document.getElementById("loading").classList.remove("hidden");
+  document.getElementById("app").classList.add("hidden");
+  document.getElementById("error").classList.add("hidden");
+  try {
+    const inv = await fetchTab(TAB_PRECIOS);
+    // Prueba los posibles nombres de la pestaña KREDIYA hasta encontrar datos válidos
+    let kre = [];
+    for (const tabName of TABS_KREDIYA) {
+      try {
+        const rows = await fetchTab(tabName);
+        // Es la pestaña correcta si la columna B (venta) es un valor de dinero
+        const valid = rows.filter(r => r[0] && !isNaN(money(r[1])) && money(r[1]) > 0);
+        if (valid.length) { kre = rows; break; }
+      } catch (e) { /* probar siguiente nombre */ }
+    }
+
+    // Inventario: A nombre, H(7) costo, I(8) estado
+    const invMap = new Map();
+    for (const r of inv) {
+      const name = (r[0] || "").trim();
+      if (!name || name.toUpperCase() === "NOMBRE") continue;
+      const costo = money(r[7]);
+      const estado = (r[8] || "").trim().toUpperCase();
+      if (isNaN(costo) || costo <= 0) continue;
+      if (estado !== "DISPONIBLE") continue;
+      const key = name.toUpperCase();
+      if (invMap.has(key)) invMap.get(key).count++;
+      else invMap.set(key, { name, costo, count: 1 });
+    }
+    inventory = [...invMap.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+    // Krediya: A celular, B venta, C inicial AD, D inicial real, E descuento, F costo, G ganancia
+    krediya = [];
+    for (const r of kre) {
+      const name = (r[0] || "").trim();
+      if (!name || name.toUpperCase() === "CELULAR") continue;
+      const venta = money(r[1]);
+      if (isNaN(venta) || venta <= 0) continue;
+      krediya.push({
+        name, venta,
+        inicialAD: money(r[2]), inicialReal: money(r[3]),
+        descuento: money(r[4]), costo: money(r[5]), ganancia: money(r[6])
+      });
+    }
+
+    if (!inventory.length) throw new Error("No se encontraron celulares DISPONIBLES.");
+
+    document.getElementById("loading").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+    buildMethods();
+    renderPhoneOptions();
+    renderKreOptions();
+    calc(); calcKre();
+  } catch (e) {
+    document.getElementById("loading").classList.add("hidden");
+    const el = document.getElementById("error");
+    el.classList.remove("hidden");
+    el.innerHTML = "No pude leer los precios (" + (e.message || e) + ").<br>" +
+      "Verifica que el archivo de Google Sheets esté compartido como <b>\"Cualquier persona con el enlace → Lector\"</b> " +
+      "(botón Compartir del Sheet) y que tengas internet. Luego dale a ↻ Actualizar.";
+  }
+}
+
+function buildMethods() {
+  const box = document.getElementById("methods");
+  box.innerHTML = "";
+  for (const m of METHODS) {
+    const b = document.createElement("button");
+    b.className = "mbtn" + (m.id === selMethod ? " active" : "");
+    b.textContent = m.name;
+    b.onclick = () => { selMethod = m.id; buildMethods(); calc(); };
+    box.appendChild(b);
+  }
+}
+
+function renderPhoneOptions() {
+  const q = (document.getElementById("search").value || "").toUpperCase();
+  const sel = document.getElementById("phoneSel");
+  const prev = sel.value;
+  sel.innerHTML = "";
+  const list = inventory.filter(p => !q || p.name.toUpperCase().indexOf(q) >= 0);
+  for (const p of list) {
+    const o = document.createElement("option");
+    o.value = p.name;
+    o.textContent = p.name + " (" + p.count + " disp.)";
+    sel.appendChild(o);
+  }
+  if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  calc();
+}
+
+function renderKreOptions() {
+  const sel = document.getElementById("kreSel");
+  sel.innerHTML = "";
+  if (!krediya.length) {
+    const o = document.createElement("option");
+    o.textContent = "— no hay celulares en la pestaña PRECIOS KREDIYA —";
+    o.value = ""; sel.appendChild(o);
+    return;
+  }
+  for (const k of krediya) {
+    const o = document.createElement("option");
+    o.value = k.name; o.textContent = k.name + " — " + fmt(k.venta);
+    sel.appendChild(o);
+  }
+}
+
+function calc() {
+  const card = document.getElementById("resultCard");
+  const name = document.getElementById("phoneSel").value;
+  const phone = inventory.find(p => p.name === name);
+  if (!phone) { card.innerHTML = '<span class="muted">Selecciona un celular.</span>'; return; }
+  const m = METHODS.find(x => x.id === selMethod);
+  const base = m.base === "contado" ? precioContado(phone.costo) : precioFin(phone.costo);
+
+  let html = '<div class="pricelabel">' + m.name + ' · ' + phone.name + '</div>';
+  html += '<div class="bigprice">' + fmt(base) + '</div>';
+  html += '<div class="note" style="margin-top:2px">' + (m.base === "contado" ? "Precio de contado" : "Precio para financiera") + ' · Costo: ' + fmt(phone.costo) + '</div>';
+
+  if (m.rate > 0) {
+    const c = cobro(base, m);
+    const pctLabel = (m.rate * 100).toLocaleString("es-CO") + "%" + (m.iva ? " + IVA 19%" : "");
+    html += '<div style="margin-top:12px">';
+    html += '<div class="row"><span>Porcentaje ' + m.name + '</span><span class="v">' + pctLabel + '</span></div>';
+    html += '<div class="row"><span>Cobro si el cliente lo paga aparte</span><span class="v">' + fmt(c.fee) + '</span></div>';
+    html += '<div class="row"><span>Cliente paga: precio + cobro aparte</span><span class="v">' + fmt(base + c.fee) + '</span></div>';
+    html += '</div>';
+    html += '<div class="highlight"><div class="pricelabel">Si el % se incluye en el precio (cobro sobre el cobro ' + fmt(c.fee2) + ')</div>';
+    html += '<div class="bigprice">' + fmt(c.totalIncluido) + '</div></div>';
+  } else {
+    html += '<div class="note green" style="font-weight:600">✓ Sin porcentaje adicional</div>';
+  }
+  card.innerHTML = html;
+}
+
+function calcKre() {
+  const card = document.getElementById("kreResult");
+  const name = document.getElementById("kreSel").value;
+  const k = krediya.find(x => x.name === name);
+  if (!k) { card.innerHTML = '<span class="muted">Agrega celulares en la pestaña PRECIOS KREDIYA del archivo y actualiza.</span>'; return; }
+  const pct = parseInt(document.getElementById("krePct").value, 10);
+  const inicial = Math.floor(k.venta * pct / 100);
+
+  let html = '<div class="pricelabel">Krediya / PayJoy · ' + k.name + '</div>';
+  html += '<div class="bigprice">' + fmt(k.venta) + '</div>';
+  html += '<div class="note" style="margin-top:2px">Precio de venta en plataforma' + (!isNaN(k.costo) ? ' · Costo: ' + fmt(k.costo) : '') + '</div>';
+  html += '<div style="margin-top:12px">';
+  html += '<div class="row"><span>Inicial ' + pct + '% (la que pide la plataforma)</span><span class="v">' + fmt(inicial) + '</span></div>';
+  if (!isNaN(k.inicialAD)) html += '<div class="row"><span>Inicial AD (guardada en la hoja)</span><span class="v">' + fmt(k.inicialAD) + '</span></div>';
+  if (!isNaN(k.inicialReal)) html += '<div class="row"><span>Inicial real (la que paga el cliente)</span><span class="v">' + fmt(k.inicialReal) + '</span></div>';
+  if (!isNaN(k.inicialReal)) html += '<div class="row"><span>Descuento a la inicial (real − ' + pct + '%)</span><span class="v">' + fmt(k.inicialReal - inicial) + '</span></div>';
+  html += '</div>';
+  if (!isNaN(k.inicialReal)) {
+    html += '<div class="highlight"><div class="pricelabel">El cliente paga de inicial</div>';
+    html += '<div class="bigprice">' + fmt(k.inicialReal) + '</div></div>';
+  }
+  card.innerHTML = html;
+}
+
+function switchTab(t) {
+  document.getElementById("panelFin").classList.toggle("hidden", t !== "fin");
+  document.getElementById("panelKre").classList.toggle("hidden", t !== "kre");
+  document.getElementById("tabFin").classList.toggle("active", t === "fin");
+  document.getElementById("tabKre").classList.toggle("active", t === "kre");
+}
+
+load();
+</script>
+</body>
+</html>
